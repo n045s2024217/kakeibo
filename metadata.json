@@ -1,0 +1,6 @@
+{
+  "name": "家計 - 暮らしに、見通しを。",
+  "description": "7月の家計や収支をひと目で管理できる、洗練されたデザインの家計簿・やることリスト・カレンダーアプリ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
