@@ -1,371 +1,330 @@
-import React, { useState, useMemo } from 'react';
-import { Transaction, Category, TodoItem } from '../types';
-import { formatCurrency, getPaymentMethodLabel } from '../utils/formatters';
-import {
-  JAPANESE_WEEKDAYS,
-  getDaysInMonth,
-  getFirstDayOfWeek,
-  formatDateWithWeekday,
-} from '../utils/dateUtils';
-import { CategoryIcon } from './CategoryIcon';
+import React, { useState } from 'react';
 import {
   Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
   Plus,
-  CheckCircle2,
-  Circle,
   Trash2,
-  ArrowDownRight,
-  ArrowUpRight,
   Clock,
+  Wallet,
 } from 'lucide-react';
+import { ExpenseItem, ScheduleItem } from '../types';
 
 interface CalendarViewProps {
-  currentMonth: string; // YYYY-MM
-  transactions: Transaction[];
-  categories: Category[];
-  todos: TodoItem[];
-  onOpenAddModalForDate: (date: string) => void;
-  onDeleteTransaction: (id: string) => void;
-  onToggleTodo: (id: string) => void;
+  schedules: ScheduleItem[];
+  expenses: ExpenseItem[];
+  onAddSchedule: (schedule: Omit<ScheduleItem, 'id'>) => void;
+  onDeleteSchedule: (id: string) => void;
 }
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
-  currentMonth,
-  transactions,
-  categories,
-  todos,
-  onOpenAddModalForDate,
-  onDeleteTransaction,
-  onToggleTodo,
+  schedules,
+  expenses,
+  onAddSchedule,
+  onDeleteSchedule,
 }) => {
-  const [selectedDate, setSelectedDate] = useState<string>(`${currentMonth}-01`);
+  // Calendar current view year and month (default July 2026)
+  const [currentYear, setCurrentYear] = useState(2026);
+  const [currentMonth, setCurrentMonth] = useState(6); // 0-indexed: 6 = July
+  const [selectedDate, setSelectedDate] = useState('2026-07-12');
+  const [newScheduleText, setNewScheduleText] = useState('');
 
-  const categoryMap = useMemo(() => {
-    const map = new Map<string, Category>();
-    categories.forEach((c) => map.set(c.id, c));
-    return map;
-  }, [categories]);
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
-  const [year, month] = currentMonth.split('-').map(Number);
-  const daysInMonth = getDaysInMonth(year, month);
-  const firstDayOfWeek = getFirstDayOfWeek(year, month);
+  // Navigate months
+  const handlePrevMonth = () => {
+    if (currentMonth === 0) {
+      setCurrentYear((y) => y - 1);
+      setCurrentMonth(11);
+    } else {
+      setCurrentMonth((m) => m - 1);
+    }
+  };
 
-  // Group transactions by day
-  const dailyData = useMemo(() => {
-    const data: { [day: number]: { expense: number; income: number; count: number } } = {};
-    transactions.forEach((tx) => {
-      const [y, m, d] = tx.date.split('-').map(Number);
-      if (y === year && m === month) {
-        if (!data[d]) {
-          data[d] = { expense: 0, income: 0, count: 0 };
-        }
-        if (tx.type === 'expense') {
-          data[d].expense += tx.amount;
-        } else {
-          data[d].income += tx.amount;
-        }
-        data[d].count += 1;
-      }
+  const handleNextMonth = () => {
+    if (currentMonth === 11) {
+      setCurrentYear((y) => y + 1);
+      setCurrentMonth(0);
+    } else {
+      setCurrentMonth((m) => m + 1);
+    }
+  };
+
+  // Days in month
+  const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+
+  // Calendar cells generation
+  const cells: {
+    day: number;
+    dateStr: string;
+    isCurrentMonth: boolean;
+  }[] = [];
+
+  // Previous month trailing days
+  for (let i = firstDayOfWeek; i > 0; i--) {
+    const day = prevMonthDays - i + 1;
+    const m = currentMonth === 0 ? 12 : currentMonth;
+    const y = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    cells.push({ day, dateStr, isCurrentMonth: false });
+  }
+
+  // Current month days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(
+      d
+    ).padStart(2, '0')}`;
+    cells.push({ day: d, dateStr, isCurrentMonth: true });
+  }
+
+  // Next month leading days to complete full grid
+  const remainingCells = (7 - (cells.length % 7)) % 7;
+  for (let i = 1; i <= remainingCells; i++) {
+    const m = currentMonth === 11 ? 1 : currentMonth + 2;
+    const y = currentMonth === 11 ? currentYear + 1 : currentYear;
+    const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+    cells.push({ day: i, dateStr, isCurrentMonth: false });
+  }
+
+  // Schedules and expenses on selected date
+  const selectedSchedules = schedules.filter((s) => s.date === selectedDate);
+  const selectedExpenses = expenses.filter((e) => e.date === selectedDate);
+  const selectedDayTotalExpense = selectedExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const handleAddSchedule = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newScheduleText.trim()) return;
+
+    onAddSchedule({
+      date: selectedDate,
+      text: newScheduleText.trim(),
     });
-    return data;
-  }, [transactions, year, month]);
 
-  // Group todos by day
-  const dailyTodos = useMemo(() => {
-    const data: { [day: number]: TodoItem[] } = {};
-    todos.forEach((todo) => {
-      const [y, m, d] = todo.dueDate.split('-').map(Number);
-      if (y === year && m === month) {
-        if (!data[d]) {
-          data[d] = [];
-        }
-        data[d].push(todo);
-      }
-    });
-    return data;
-  }, [todos, year, month]);
-
-  // Selected day items
-  const selectedDayTransactions = useMemo(() => {
-    return transactions
-      .filter((t) => t.date === selectedDate)
-      .sort((a, b) => (b.type === 'expense' ? 1 : -1));
-  }, [transactions, selectedDate]);
-
-  const selectedDayTodos = useMemo(() => {
-    return todos.filter((t) => t.dueDate === selectedDate);
-  }, [todos, selectedDate]);
-
-  const selectedDayExpense = selectedDayTransactions
-    .filter((t) => t.type === 'expense')
-    .reduce((s, t) => s + t.amount, 0);
-
-  const selectedDayIncome = selectedDayTransactions
-    .filter((t) => t.type === 'income')
-    .reduce((s, t) => s + t.amount, 0);
-
-  // Build grid calendar cells
-  const blanks = Array.from({ length: firstDayOfWeek });
-  const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    setNewScheduleText('');
+  };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      {/* Calendar Grid Section */}
-      <div className="lg:col-span-8 bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-bold text-emerald-950 flex items-center gap-2">
-              <CalendarIcon className="w-4 h-4 text-emerald-700" />
-              <span>収支カレンダー</span>
-            </h2>
-            <p className="text-xs text-stone-500 mt-0.5">日ごとの出費・収入・やることの予定</p>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-stone-500 font-medium">
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded bg-rose-100 border border-rose-300"></span>
-              支出
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-300"></span>
-              収入
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-              タスク
-            </span>
-          </div>
+    <div className="max-w-[1180px] mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+      {/* View Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#e2ede3]">
+        <div>
+          <span className="text-[11px] font-bold tracking-wider text-[#2e6d50] uppercase">
+            SCHEDULE & EXPENSE CALENDAR
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-[#162e22]">
+            カレンダー
+          </h2>
+          <p className="text-xs text-[#6e8576] mt-0.5">
+            日々の予定と、支出が発生した日付をワンビューで把握できます
+          </p>
+        </div>
+      </div>
+
+      {/* Calendar Controls & Grid */}
+      <div className="bg-white rounded-3xl p-5 sm:p-7 border border-[#e1eae1] shadow-xs">
+        {/* Month Navigation */}
+        <div className="flex items-center justify-between mb-5">
+          <button
+            onClick={handlePrevMonth}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-[#dce7dd] hover:bg-[#edf5ee] text-xs font-bold text-[#1c4e3f] transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>前月</span>
+          </button>
+
+          <h3 className="text-lg sm:text-xl font-bold text-[#162e22]">
+            {currentYear}年 {currentMonth + 1}月
+          </h3>
+
+          <button
+            onClick={handleNextMonth}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-[#dce7dd] hover:bg-[#edf5ee] text-xs font-bold text-[#1c4e3f] transition-colors cursor-pointer"
+          >
+            <span>翌月</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Weekday headers */}
-        <div className="grid grid-cols-7 gap-1 text-center font-semibold text-xs py-2 border-b border-stone-200">
-          {JAPANESE_WEEKDAYS.map((day, idx) => (
+        <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs text-[#6e8576] mb-2 pb-2 border-b border-[#f0f4ef]">
+          {weekdays.map((w, index) => (
             <div
-              key={day}
-              className={`${
-                idx === 0 ? 'text-rose-600' : idx === 6 ? 'text-blue-600' : 'text-stone-600'
-              }`}
+              key={w}
+              className={
+                index === 0
+                  ? 'text-[#ba524b]'
+                  : index === 6
+                  ? 'text-[#3572a5]'
+                  : ''
+              }
             >
-              {day}
+              {w}
             </div>
           ))}
         </div>
 
-        {/* Days Grid */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 pt-2">
-          {blanks.map((_, idx) => (
-            <div key={`blank-${idx}`} className="h-20 sm:h-24 bg-stone-50/40 rounded-xl" />
-          ))}
-
-          {dayNumbers.map((day) => {
-            const dateStr = `${currentMonth}-${String(day).padStart(2, '0')}`;
-            const isSelected = selectedDate === dateStr;
-            const dayOfWeek = new Date(year, month - 1, day).getDay();
-            const dayInfo = dailyData[day];
-            const tasks = dailyTodos[day];
-
-            const isSunday = dayOfWeek === 0;
-            const isSaturday = dayOfWeek === 6;
+        {/* Calendar Day Grid */}
+        <div className="grid grid-cols-7 gap-1.5">
+          {cells.map((cell) => {
+            const isSelected = cell.dateStr === selectedDate;
+            const daySchedules = schedules.filter((s) => s.date === cell.dateStr);
+            const dayExpenses = expenses.filter((e) => e.date === cell.dateStr);
+            const dayExpenseTotal = dayExpenses.reduce((sum, e) => sum + e.amount, 0);
 
             return (
-              <button
-                key={`day-${day}`}
-                onClick={() => setSelectedDate(dateStr)}
-                className={`h-20 sm:h-24 p-1.5 rounded-xl border text-left flex flex-col justify-between transition relative overflow-hidden group ${
-                  isSelected
-                    ? 'border-emerald-600 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-600/20'
-                    : 'border-stone-200/80 bg-white hover:border-emerald-300 hover:bg-stone-50/70'
+              <div
+                key={cell.dateStr}
+                onClick={() => setSelectedDate(cell.dateStr)}
+                className={`min-h-[86px] sm:min-h-[96px] p-2 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between ${
+                  !cell.isCurrentMonth
+                    ? 'bg-[#fcfdfc] text-[#a4b5aa] border-[#edf3ed]'
+                    : isSelected
+                    ? 'bg-[#eaf4ec] border-[#1c4e3f] shadow-xs'
+                    : 'bg-white border-[#e3ebe2] hover:border-[#b8d4bf] hover:bg-[#fbfdfb]'
                 }`}
               >
-                <div className="flex items-center justify-between w-full">
+                {/* Day number */}
+                <div className="flex items-center justify-between">
                   <span
-                    className={`text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full ${
+                    className={`text-xs font-bold ${
                       isSelected
-                        ? 'bg-emerald-700 text-white'
-                        : isSunday
-                        ? 'text-rose-600'
-                        : isSaturday
-                        ? 'text-blue-600'
-                        : 'text-stone-700'
+                        ? 'text-[#1c4e3f] font-extrabold'
+                        : cell.isCurrentMonth
+                        ? 'text-[#162e22]'
+                        : 'text-[#9cb0a2]'
                     }`}
                   >
-                    {day}
+                    {cell.day}
                   </span>
 
-                  {tasks && tasks.length > 0 && (
-                    <span
-                      className="w-2 h-2 rounded-full bg-amber-500"
-                      title={`${tasks.length}件のやること`}
-                    />
+                  {daySchedules.length > 0 && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#1c4e3f] inline-block" />
                   )}
                 </div>
 
-                {/* Badges for income/expense */}
-                <div className="space-y-0.5 w-full">
-                  {dayInfo?.income > 0 && (
-                    <div className="text-[10px] sm:text-[11px] font-semibold text-emerald-700 bg-emerald-50/90 rounded px-1 truncate">
-                      +{formatCurrency(dayInfo.income)}
+                {/* Day badges */}
+                <div className="space-y-1 mt-1">
+                  {daySchedules.slice(0, 1).map((s) => (
+                    <div
+                      key={s.id}
+                      className="text-[10px] font-semibold text-[#1c4e3f] bg-[#e1f0e4] px-1.5 py-0.5 rounded truncate"
+                    >
+                      {s.text}
                     </div>
-                  )}
-                  {dayInfo?.expense > 0 && (
-                    <div className="text-[10px] sm:text-[11px] font-semibold text-rose-600 bg-rose-50/90 rounded px-1 truncate">
-                      -{formatCurrency(dayInfo.expense)}
+                  ))}
+
+                  {dayExpenseTotal > 0 && (
+                    <div className="text-[10px] font-extrabold text-[#9a423a] bg-[#fae8e6] px-1.5 py-0.5 rounded truncate tabular-nums">
+                      ¥{dayExpenseTotal.toLocaleString('ja-JP')}
                     </div>
                   )}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
       </div>
 
-      {/* Selected Day Details Sidebar */}
-      <div className="lg:col-span-4 bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div>
-              <span className="text-xs font-bold text-emerald-800 uppercase tracking-wide">
-                選択日の明細
-              </span>
-              <h3 className="text-base font-bold text-stone-900 mt-0.5">
-                {formatDateWithWeekday(selectedDate)}
-              </h3>
-            </div>
-            <button
-              onClick={() => onOpenAddModalForDate(selectedDate)}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100/70 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 transition"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              この日に追加
-            </button>
-          </div>
+      {/* Selected Day Details Panel */}
+      <div className="bg-white rounded-3xl p-6 border border-[#e1eae1] shadow-xs space-y-6">
+        <div className="flex items-center justify-between pb-3 border-b border-[#f0f4ef]">
+          <h3 className="text-base sm:text-lg font-bold text-[#162e22]">
+            選択日詳細: <span className="text-[#1c4e3f] font-extrabold">{selectedDate}</span>
+          </h3>
 
-          {/* Daily total summary */}
-          <div className="grid grid-cols-2 gap-2 my-3 p-2.5 bg-stone-50 rounded-xl text-xs">
-            <div>
-              <span className="text-stone-500">支出合計</span>
-              <div className="text-sm font-bold text-stone-900">
-                {selectedDayExpense > 0 ? formatCurrency(selectedDayExpense) : '¥0'}
-              </div>
-            </div>
-            <div>
-              <span className="text-stone-500">収入合計</span>
-              <div className="text-sm font-bold text-emerald-700">
-                {selectedDayIncome > 0 ? formatCurrency(selectedDayIncome) : '¥0'}
-              </div>
-            </div>
-          </div>
-
-          {/* Day's Todos */}
-          {selectedDayTodos.length > 0 && (
-            <div className="mb-4">
-              <span className="text-xs font-bold text-stone-600 flex items-center gap-1.5 mb-2">
-                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                本日期日のやること ({selectedDayTodos.length})
-              </span>
-              <div className="space-y-1.5">
-                {selectedDayTodos.map((todo) => (
-                  <div
-                    key={todo.id}
-                    onClick={() => onToggleTodo(todo.id)}
-                    className="flex items-start gap-2 p-2 rounded-lg border border-amber-100 bg-amber-50/50 cursor-pointer hover:bg-amber-50 transition"
-                  >
-                    {todo.completed ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    )}
-                    <div className="text-xs">
-                      <p
-                        className={`font-medium ${
-                          todo.completed ? 'line-through text-stone-400' : 'text-stone-800'
-                        }`}
-                      >
-                        {todo.title}
-                      </p>
-                      {todo.amount && (
-                        <span className="text-[11px] font-semibold text-emerald-700">
-                          {formatCurrency(todo.amount)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {selectedDayTotalExpense > 0 && (
+            <div className="text-xs font-bold text-[#8d3c36]">
+              この日の合計支出: ¥{selectedDayTotalExpense.toLocaleString('ja-JP')}
             </div>
           )}
+        </div>
 
-          {/* Transactions list on this day */}
-          <div>
-            <span className="text-xs font-bold text-stone-600 mb-2 block">
-              記録された収支 ({selectedDayTransactions.length})
-            </span>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Schedules for the day */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-[#446150] flex items-center gap-1.5">
+              <span>📌 この日の予定</span>
+              <span className="text-[#789080]">({selectedSchedules.length}件)</span>
+            </h4>
 
-            {selectedDayTransactions.length === 0 ? (
-              <div className="text-center py-8 text-stone-400 text-xs border border-dashed border-stone-200 rounded-xl">
-                この日の収支記録はありません。
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
-                {selectedDayTransactions.map((tx) => {
-                  const cat = categoryMap.get(tx.categoryId);
-                  const isExpense = tx.type === 'expense';
-
-                  return (
-                    <div
-                      key={tx.id}
-                      className="p-2.5 rounded-xl border border-stone-100 hover:border-stone-200 bg-white transition group flex items-center justify-between"
+            <div className="space-y-2">
+              {selectedSchedules.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#f9fbf9] border border-[#e8f0e8] text-xs text-[#789080] text-center">
+                  登録された予定はありません。
+                </div>
+              ) : (
+                selectedSchedules.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-[#f9fbf9] border border-[#e3eee4]"
+                  >
+                    <span className="text-xs font-bold text-[#162e22]">
+                      {s.text}
+                    </span>
+                    <button
+                      onClick={() => onDeleteSchedule(s.id)}
+                      className="p-1 text-[#b55852] hover:bg-[#fae8e6] rounded transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                          style={{
-                            backgroundColor: cat?.bgColor || '#f3f4f6',
-                            color: cat?.color || '#4b5563',
-                          }}
-                        >
-                          <CategoryIcon name={cat?.icon || 'Tag'} className="w-3.5 h-3.5" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-stone-800">
-                            {cat?.name || 'その他'}
-                          </div>
-                          {tx.memo && (
-                            <div className="text-[11px] text-stone-500 line-clamp-1">{tx.memo}</div>
-                          )}
-                          <span className="text-[10px] text-stone-400">
-                            {getPaymentMethodLabel(tx.paymentMethod)}
-                          </span>
-                        </div>
-                      </div>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="text-right">
-                          <span
-                            className={`text-xs font-bold flex items-center justify-end ${
-                              isExpense ? 'text-stone-900' : 'text-emerald-700'
-                            }`}
-                          >
-                            {isExpense ? (
-                              <ArrowDownRight className="w-3 h-3 text-stone-400" />
-                            ) : (
-                              <ArrowUpRight className="w-3 h-3 text-emerald-600" />
-                            )}
-                            {isExpense ? formatCurrency(tx.amount) : `+${formatCurrency(tx.amount)}`}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => onDeleteTransaction(tx.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-stone-400 hover:text-rose-600 rounded transition"
-                          title="削除"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+            {/* Add schedule input */}
+            <form onSubmit={handleAddSchedule} className="flex gap-2 pt-1">
+              <input
+                type="text"
+                value={newScheduleText}
+                onChange={(e) => setNewScheduleText(e.target.value)}
+                placeholder="新しい予定を入力..."
+                className="flex-1 px-3 py-2 rounded-xl bg-[#f9fbf9] border border-[#dce7dd] text-xs text-[#162e22] focus:outline-none focus:border-[#2a7b60]"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-[#1c4e3f] hover:bg-[#153e32] text-white font-bold text-xs transition-colors cursor-pointer shrink-0"
+              >
+                追加
+              </button>
+            </form>
+          </div>
+
+          {/* Expenses on this day */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-[#446150] flex items-center gap-1.5">
+              <span>💴 この日の支出記録</span>
+              <span className="text-[#789080]">({selectedExpenses.length}件)</span>
+            </h4>
+
+            <div className="space-y-2">
+              {selectedExpenses.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#f9fbf9] border border-[#e8f0e8] text-xs text-[#789080] text-center">
+                  この日の支出記録はありません。
+                </div>
+              ) : (
+                selectedExpenses.map((e) => (
+                  <div
+                    key={e.id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-[#f9fbf9] border border-[#e3eee4]"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-[#162e22]">
+                        {e.title}
+                      </div>
+                      <div className="text-[10px] text-[#789080]">
+                        [{e.category}] {e.time || ''}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <div className="text-xs font-extrabold text-[#8d3c36] tabular-nums">
+                      −¥{e.amount.toLocaleString('ja-JP')}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>
