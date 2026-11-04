@@ -31,6 +31,8 @@ import {
   INITIAL_SUBS,
   INITIAL_WISHES,
   INITIAL_SETTINGS,
+  getCurrentYearMonthString,
+  getPreviousYearMonthString,
 } from './data/initialData';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
@@ -43,21 +45,26 @@ const STORAGE_KEY = 'kakeibo_app_data_v1';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
-  const [currentMonth, setCurrentMonth] = useState('2026-07');
+  const [currentMonth, setCurrentMonth] = useState<string>(() => {
+    return getCurrentYearMonthString();
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
 
   // App Data States
   const [expenses, setExpenses] = useState<ExpenseItem[]>(() => {
+    const curYM = getCurrentYearMonthString();
+    const prevYM = getPreviousYearMonthString(curYM);
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed.expenses) && parsed.expenses.length > 0) {
-          const hasJune = parsed.expenses.some((e: ExpenseItem) => e.date.startsWith('2026-06'));
-          if (!hasJune) {
-            const juneExpenses = INITIAL_EXPENSES.filter((e) => e.date.startsWith('2026-06'));
-            return [...parsed.expenses, ...juneExpenses];
+          // If saved expenses don't have records for current month, append current month demo data
+          const hasCurrentMonth = parsed.expenses.some((e: ExpenseItem) => e.date.startsWith(curYM));
+          if (!hasCurrentMonth) {
+            const currentDemoExpenses = INITIAL_EXPENSES.filter((e) => e.date.startsWith(curYM) || e.date.startsWith(prevYM));
+            return [...parsed.expenses, ...currentDemoExpenses];
           }
           return parsed.expenses;
         }
@@ -69,15 +76,17 @@ export default function App() {
   });
 
   const [incomes, setIncomes] = useState<IncomeItem[]>(() => {
+    const curYM = getCurrentYearMonthString();
+    const prevYM = getPreviousYearMonthString(curYM);
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed.incomes) && parsed.incomes.length > 0) {
-          const hasJune = parsed.incomes.some((i: IncomeItem) => i.date.startsWith('2026-06'));
-          if (!hasJune) {
-            const juneIncomes = INITIAL_INCOMES.filter((i) => i.date.startsWith('2026-06'));
-            return [...parsed.incomes, ...juneIncomes];
+          const hasCurrentMonth = parsed.incomes.some((i: IncomeItem) => i.date.startsWith(curYM));
+          if (!hasCurrentMonth) {
+            const currentDemoIncomes = INITIAL_INCOMES.filter((i) => i.date.startsWith(curYM) || i.date.startsWith(prevYM));
+            return [...parsed.incomes, ...currentDemoIncomes];
           }
           return parsed.incomes;
         }
@@ -306,6 +315,7 @@ export default function App() {
           openRecordModal={() => setIsRecordModalOpen(true)}
           todoCount={uncompletedTodoCount}
           userName={settings.userName}
+          currentMonth={currentMonth}
         />
       </div>
 
@@ -356,6 +366,7 @@ export default function App() {
               }}
               todoCount={uncompletedTodoCount}
               userName={settings.userName}
+              currentMonth={currentMonth}
             />
           </div>
           <div className="flex-1" onClick={() => setMobileMenuOpen(false)} />

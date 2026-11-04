@@ -16,6 +16,7 @@ interface SidebarProps {
   openRecordModal: () => void;
   todoCount: number;
   userName: string;
+  currentMonth: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -24,12 +25,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   openRecordModal,
   todoCount,
   userName,
+  currentMonth,
 }) => {
+  const monthNum = parseInt(currentMonth.split('-')[1], 10);
+
   const navItems = [
     {
       id: 'dashboard' as NavTab,
       label: 'ホーム',
-      sublabel: '7月の家計',
+      sublabel: `${monthNum}月の家計`,
       icon: Home,
     },
     {

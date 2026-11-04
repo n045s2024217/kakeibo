@@ -218,17 +218,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => onChangeMonth(-1)}
-              title="前月へ"
-              className="w-8 h-8 rounded-full border border-[#d5e3d7] bg-white hover:bg-[#edf5ee] flex items-center justify-center text-[#355242] transition-colors cursor-pointer shadow-xs active:scale-95"
+              title="前の月へ"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#d5e3d7] bg-white hover:bg-[#edf5ee] text-xs font-semibold text-[#355242] transition-colors cursor-pointer shadow-xs active:scale-95"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>前の月</span>
             </button>
             <button
               onClick={() => onChangeMonth(1)}
-              title="翌月へ"
-              className="w-8 h-8 rounded-full border border-[#d5e3d7] bg-white hover:bg-[#edf5ee] flex items-center justify-center text-[#355242] transition-colors cursor-pointer shadow-xs active:scale-95"
+              title="次の月へ"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#d5e3d7] bg-white hover:bg-[#edf5ee] text-xs font-semibold text-[#355242] transition-colors cursor-pointer shadow-xs active:scale-95"
             >
-              <ArrowRight className="w-4 h-4" />
+              <span>次の月</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

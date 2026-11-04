@@ -23,10 +23,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onAddSchedule,
   onDeleteSchedule,
 }) => {
-  // Calendar current view year and month (default July 2026)
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(6); // 0-indexed: 6 = July
-  const [selectedDate, setSelectedDate] = useState('2026-07-12');
+  const now = new Date();
+  const [currentYear, setCurrentYear] = useState(() => now.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => now.getMonth()); // 0-indexed
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
   const [newScheduleText, setNewScheduleText] = useState('');
 
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
