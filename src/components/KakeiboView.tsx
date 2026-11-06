@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Wallet,
   Plus,
@@ -15,6 +15,9 @@ import {
   AlertCircle,
   BarChart3,
   PieChart as PieChartIcon,
+  Users,
+  UserPlus,
+  Edit2,
 } from 'lucide-react';
 import {
   ExpenseItem,
@@ -23,6 +26,7 @@ import {
   WishItem,
   AppSettings,
   ExpenseCategory,
+  UserProfile,
 } from '../types';
 
 interface KakeiboViewProps {
@@ -42,7 +46,10 @@ interface KakeiboViewProps {
   onUpdateSettings: (settings: Partial<AppSettings>) => void;
   onResetData: () => void;
   onLoadSampleData: () => void;
+  onOpenUserModal: () => void;
+  onSelectUser: (userId: string) => void;
 }
+
 
 const CATEGORIES: ExpenseCategory[] = [
   '食費',
@@ -75,10 +82,21 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
   onUpdateSettings,
   onResetData,
   onLoadSampleData,
+  onOpenUserModal,
+  onSelectUser,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<
     'ledger' | 'subs' | 'wish' | 'ai' | 'receipt' | 'settings'
   >('ledger');
+
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Multi-user filter and selection state
+  const [userFilter, setUserFilter] = useState<string>('all');
+  const [selectedEntryUser, setSelectedEntryUser] = useState<string>(() => {
+    return settings.currentUserId !== 'all' ? settings.currentUserId : (settings.users?.[0]?.id || '');
+  });
+
 
   // Form states for adding items
   const [expenseTitle, setExpenseTitle] = useState('');
@@ -94,6 +112,7 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
   const [timeframe, setTimeframe] = useState<'all' | 'month' | 'week'>('month');
   const [viewMode, setViewMode] = useState<'bar' | 'pie'>('bar');
 
+
   // Subscriptions form state
   const [subName, setSubName] = useState('');
   const [subFee, setSubFee] = useState('');
@@ -106,9 +125,32 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
 
-  // Filter expenses by timeframe
+  // Reset userFilter or selectedEntryUser if the selected user was deleted
+  useEffect(() => {
+    const validIds = new Set(settings.users?.map((u) => u.id) || []);
+    if (userFilter !== 'all' && !validIds.has(userFilter)) {
+      setUserFilter('all');
+    }
+    if (selectedEntryUser && !validIds.has(selectedEntryUser)) {
+      setSelectedEntryUser(settings.users?.[0]?.id || '');
+    }
+  }, [settings.users, userFilter, selectedEntryUser]);
+
+  // Filter expenses by timeframe and user
   const currentMonthPrefix = expenseDate.slice(0, 7);
+  const validUserIds = new Set(settings.users?.map((u) => u.id) || []);
+
   const filteredExpenses = expenses.filter((e) => {
+    const effectiveUserId =
+      e.userId || (['exp-2', 'exp-4', 'exp-9', 'exp-12'].includes(e.id) ? 'user-2' : 'user-1');
+
+    if (userFilter !== 'all') {
+      if (effectiveUserId !== userFilter) return false;
+    } else {
+      // In 'all' (全員) view, strictly only include items from currently active users
+      if (!validUserIds.has(effectiveUserId)) return false;
+    }
+
     if (timeframe === 'all') return true;
     if (timeframe === 'month') return e.date.startsWith(currentMonthPrefix);
     if (timeframe === 'week') {
@@ -122,9 +164,17 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
   });
 
   const totalExpense = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const totalIncome = incomes
-    .filter((i) => (timeframe === 'month' ? i.date.startsWith(currentMonthPrefix) : true))
-    .reduce((sum, i) => sum + i.amount, 0);
+
+  const filteredIncomes = incomes.filter((i) => {
+    const effectiveUserId = i.userId || 'user-1';
+    if (userFilter !== 'all') {
+      if (effectiveUserId !== userFilter) return false;
+    } else {
+      if (!validUserIds.has(effectiveUserId)) return false;
+    }
+    return timeframe === 'month' ? i.date.startsWith(currentMonthPrefix) : true;
+  });
+  const totalIncome = filteredIncomes.reduce((sum, i) => sum + i.amount, 0);
 
   // Breakdown calculation
   const categoryTotals: Record<string, number> = {};
@@ -146,6 +196,7 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
       amount: amountNum,
       date: expenseDate,
       time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      userId: selectedEntryUser || settings.users?.[0]?.id || 'user-1',
     });
 
     setExpenseTitle('');
@@ -162,6 +213,7 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
       source: incomeSource.trim(),
       amount: amountNum,
       date: incomeDate,
+      userId: selectedEntryUser || settings.users?.[0]?.id || 'user-1',
     });
 
     setIncomeSource('');
@@ -278,6 +330,25 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
               </div>
 
               <form onSubmit={handleExpenseSubmit} className="space-y-3.5">
+                {settings.users?.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold text-[#486353] mb-1">
+                      記録者 / 担当ユーザー
+                    </label>
+                    <select
+                      value={selectedEntryUser}
+                      onChange={(e) => setSelectedEntryUser(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#f9fbf9] border border-[#dce7dd] text-xs font-bold text-[#162e22] focus:outline-none focus:border-[#2a7b60]"
+                    >
+                      {settings.users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role || 'メンバー'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-semibold text-[#486353] mb-1">
                     品名 / 用途
@@ -291,6 +362,7 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
                     required
                   />
                 </div>
+
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -364,6 +436,25 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
               </div>
 
               <form onSubmit={handleIncomeSubmit} className="space-y-3.5">
+                {settings.users?.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold text-[#486353] mb-1">
+                      受取者 / 担当ユーザー
+                    </label>
+                    <select
+                      value={selectedEntryUser}
+                      onChange={(e) => setSelectedEntryUser(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#f9fbf9] border border-[#dce7dd] text-xs font-bold text-[#162e22] focus:outline-none focus:border-[#2a7b60]"
+                    >
+                      {settings.users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role || 'メンバー'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-semibold text-[#486353] mb-1">
                     収入の種類 / 送金元
@@ -377,6 +468,7 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
                     required
                   />
                 </div>
+
 
                 <div>
                   <label className="block text-xs font-semibold text-[#486353] mb-1">
@@ -499,54 +591,118 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
 
           {/* Full Transactions Table */}
           <div className="bg-white rounded-3xl p-6 border border-[#e1eae1] shadow-xs">
-            <h3 className="text-base font-bold text-[#162e22] mb-4">
-              最近の支出履歴一覧
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-[#f0f4ef]">
+              <h3 className="text-base font-bold text-[#162e22]">
+                最近の支出履歴一覧
+              </h3>
+
+              {/* User filter pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                <span className="text-xs text-[#71887a] font-semibold mr-1">表示:</span>
+                <button
+                  type="button"
+                  onClick={() => setUserFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+                    userFilter === 'all'
+                      ? 'bg-[#1c4e3f] text-white shadow-xs'
+                      : 'bg-[#f4f7f4] text-[#4d6a57] hover:bg-[#e6eee7]'
+                  }`}
+                >
+                  全員
+                </button>
+                {settings.users?.map((u) => (
+                  <button
+                    type="button"
+                    key={u.id}
+                    onClick={() => setUserFilter(u.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                      userFilter === u.id
+                        ? 'bg-[#1c4e3f] text-white shadow-xs'
+                        : 'bg-[#f4f7f4] text-[#4d6a57] hover:bg-[#e6eee7]'
+                    }`}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full inline-block"
+                      style={{ backgroundColor: u.avatarColor || '#1c4e3f' }}
+                    />
+                    <span>{u.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-[#edf3ec] text-[#6e8576]">
                     <th className="py-2.5 px-3 font-semibold">日付</th>
                     <th className="py-2.5 px-3 font-semibold">品名 / 用途</th>
+                    <th className="py-2.5 px-3 font-semibold">担当</th>
                     <th className="py-2.5 px-3 font-semibold">カテゴリ</th>
                     <th className="py-2.5 px-3 font-semibold text-right">金額</th>
                     <th className="py-2.5 px-3 font-semibold text-center">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f2f6f2]">
-                  {filteredExpenses.map((e) => (
-                    <tr key={e.id} className="hover:bg-[#fbfdfb]">
-                      <td className="py-3 px-3 text-[#526b5c] whitespace-nowrap">
-                        {e.date} {e.time || ''}
-                      </td>
-                      <td className="py-3 px-3 font-medium text-[#162e22]">
-                        {e.title}
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className="inline-block px-2 py-0.5 rounded-md bg-[#edf5ee] text-[#1c4e3f] font-semibold text-[11px]">
-                          {e.category}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 font-bold text-right text-[#1a3325] tabular-nums">
-                        −¥{e.amount.toLocaleString('ja-JP')}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <button
-                          onClick={() => onDeleteExpense(e.id)}
-                          className="p-1 text-[#a5524d] hover:bg-[#fae8e6] rounded-md transition-colors cursor-pointer"
-                          title="削除"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredExpenses.map((e) => {
+                    const effectiveUid =
+                      e.userId || (['exp-2', 'exp-4', 'exp-9', 'exp-12'].includes(e.id) ? 'user-2' : 'user-1');
+                    const eUser = settings.users?.find((u) => u.id === effectiveUid);
+                    return (
+                      <tr key={e.id} className="hover:bg-[#fbfdfb]">
+                        <td className="py-3 px-3 text-[#526b5c] whitespace-nowrap">
+                          {e.date} {e.time || ''}
+                        </td>
+                        <td className="py-3 px-3 font-medium text-[#162e22]">
+                          {e.title}
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {eUser ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px]"
+                              style={{
+                                backgroundColor: `${eUser.avatarColor}15`,
+                                color: eUser.avatarColor,
+                                border: `1px solid ${eUser.avatarColor}35`,
+                              }}
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ backgroundColor: eUser.avatarColor }}
+                              />
+                              <span>{eUser.name}</span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-[#93a79a]">共通</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="inline-block px-2 py-0.5 rounded-md bg-[#edf5ee] text-[#1c4e3f] font-semibold text-[11px]">
+                            {e.category}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-bold text-right text-[#1a3325] tabular-nums">
+                          −¥{e.amount.toLocaleString('ja-JP')}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            onClick={() => onDeleteExpense(e.id)}
+                            className="p-1 text-[#a5524d] hover:bg-[#fae8e6] rounded-md transition-colors cursor-pointer"
+                            title="削除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
       )}
+
 
       {/* Tab 2: Receipt Auto Scanner */}
       {activeSubTab === 'receipt' && (
@@ -918,16 +1074,122 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-[#486353] mb-1">
-                表示ユーザー名
+                現在のアクティブユーザー
               </label>
-              <input
-                type="text"
-                value={settings.userName}
-                onChange={(e) => onUpdateSettings({ userName: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#f9fbf9] border border-[#dce7dd] text-sm text-[#162e22]"
-              />
+              <div className="flex items-center gap-2">
+                <select
+                  value={settings.currentUserId}
+                  onChange={(e) => onSelectUser(e.target.value)}
+                  className="flex-1 px-3.5 py-2 rounded-xl bg-[#f9fbf9] border border-[#dce7dd] text-sm text-[#162e22]"
+                >
+                  <option value="all">全員（世帯全体）</option>
+                  {settings.users?.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.role || 'メンバー'})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={onOpenUserModal}
+                  className="px-3 py-2 rounded-xl bg-[#1c4e3f] hover:bg-[#153e32] text-white text-xs font-bold shrink-0 cursor-pointer shadow-xs flex items-center gap-1"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>管理</span>
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Dedicated Multi-User Management List & Config */}
+          <div className="pt-4 border-t border-[#edf3ec] space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-[#162e22] flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-[#1c4e3f]" />
+                  <span>各ユーザーの設定・名前管理 ({settings.users?.length || 0}名)</span>
+                </h4>
+                <p className="text-xs text-[#789080]">
+                  ユーザーごとに名前、続柄・役割、テーマカラー、月間個別予算を設定できます
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={onOpenUserModal}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1c4e3f] hover:bg-[#163e32] text-white text-xs font-bold shadow-xs cursor-pointer transition-colors"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>ユーザー追加 / 編集</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {settings.users?.map((u) => {
+                const isSelected = settings.currentUserId === u.id;
+                return (
+                  <div
+                    key={u.id}
+                    className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                      isSelected
+                        ? 'bg-[#f0f7f1] border-[#1c4e3f] shadow-xs'
+                        : 'bg-[#fafcfa] border-[#e1ece2] hover:border-[#cbddcf]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className="w-10 h-10 rounded-2xl text-white font-bold flex items-center justify-center shrink-0 shadow-xs"
+                        style={{ backgroundColor: u.avatarColor || '#1c4e3f' }}
+                      >
+                        {u.name.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-sm text-[#162e22] truncate">
+                            {u.name}
+                          </span>
+                          {u.role && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#e2ede4] text-[#246344]">
+                              {u.role}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-[#71887a] mt-0.5 truncate">
+                          {u.monthlyBudget
+                            ? `目安予算: ¥${u.monthlyBudget.toLocaleString('ja-JP')}`
+                            : '予算未設定'}
+                          {u.memo ? ` • ${u.memo}` : ''}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onSelectUser(u.id)}
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#1c4e3f] text-white'
+                            : 'bg-[#edf4ee] text-[#275e46] hover:bg-[#dbeadc]'
+                        }`}
+                      >
+                        {isSelected ? '選択中' : '選択'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onOpenUserModal}
+                        className="p-1.5 rounded-xl text-[#5e7769] hover:text-[#1c4e3f] hover:bg-[#ebf4ec] transition-colors cursor-pointer"
+                        title="編集"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
 
           <div className="pt-4 border-t border-[#edf3ec] flex flex-wrap items-center justify-between gap-3">
             <button
@@ -938,11 +1200,7 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
             </button>
 
             <button
-              onClick={() => {
-                if (window.confirm('すべての家計データを初期化しますか？')) {
-                  onResetData();
-                }
-              }}
+              onClick={() => setShowResetConfirm(true)}
               className="px-4 py-2 rounded-xl border border-[#f3d3cf] hover:bg-[#fae8e6] text-[#b55852] text-xs font-bold transition-colors cursor-pointer"
             >
               データ完全リセット
@@ -950,6 +1208,46 @@ export const KakeiboView: React.FC<KakeiboViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* In-app Data Reset Confirmation Dialog */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white max-w-sm w-full rounded-3xl p-6 border border-rose-100 shadow-2xl text-center space-y-4 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-xs">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-[#162e22]">
+                データを完全リセットしますか？
+              </h4>
+              <p className="text-xs text-[#6e8576] mt-1.5 leading-relaxed">
+                記録されたすべての支出・収入・タスクが初期化されます。<br />
+                この操作は取り消せません。よろしいですか？
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-[#d6e5d8] text-xs font-bold text-[#557161] hover:bg-[#edf5ee] cursor-pointer transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onResetData();
+                  setShowResetConfirm(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white shadow-xs cursor-pointer transition-colors"
+              >
+                リセット実行
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

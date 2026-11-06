@@ -11,6 +11,15 @@ export type ExpenseCategory =
   | '医療・保険'
   | 'その他';
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  role: string; // e.g. "家計主 / 管理者", "パートナー", "家族", "子供"
+  avatarColor: string; // Hex color code
+  monthlyBudget?: number;
+  memo?: string;
+}
+
 export interface ExpenseItem {
   id: string;
   title: string;
@@ -19,6 +28,7 @@ export interface ExpenseItem {
   date: string; // YYYY-MM-DD
   time?: string; // HH:mm
   memo?: string;
+  userId?: string;
 }
 
 export interface IncomeItem {
@@ -27,6 +37,7 @@ export interface IncomeItem {
   amount: number;
   date: string; // YYYY-MM-DD
   memo?: string;
+  userId?: string;
 }
 
 export interface TodoItem {
@@ -36,6 +47,7 @@ export interface TodoItem {
   completed: boolean;
   dueDate?: string;
   createdAt: string;
+  userId?: string;
 }
 
 export interface ScheduleItem {
@@ -43,6 +55,7 @@ export interface ScheduleItem {
   date: string; // YYYY-MM-DD
   text: string;
   category?: string;
+  userId?: string;
 }
 
 export interface SubscriptionItem {
@@ -51,6 +64,7 @@ export interface SubscriptionItem {
   fee: number;
   cycle: 'monthly' | 'yearly';
   category?: string;
+  userId?: string;
 }
 
 export interface WishItem {
@@ -58,6 +72,7 @@ export interface WishItem {
   name: string;
   price: number;
   saved?: boolean;
+  userId?: string;
 }
 
 export interface AppSettings {
@@ -66,6 +81,9 @@ export interface AppSettings {
   targetSavings: number;
   monthlyBudget: number;
   userName: string;
+  currentUserId: string; // 'all' or specific user ID
+  users: UserProfile[];
 }
 
 export type NavTab = 'dashboard' | 'kakeibo' | 'todo' | 'calendar';
+

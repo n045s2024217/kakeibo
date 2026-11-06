@@ -15,6 +15,8 @@ import {
   Wallet,
   Building,
   Plus,
+  Users,
+  UserPlus,
 } from 'lucide-react';
 import { ExpenseItem, IncomeItem, NavTab, AppSettings } from '../types';
 
@@ -26,7 +28,9 @@ interface DashboardViewProps {
   onNavigateTab: (tab: NavTab) => void;
   onOpenRecordModal: () => void;
   onOpenAllTransactions: () => void;
-  settings?: AppSettings;
+  settings: AppSettings;
+  onOpenUserModal: () => void;
+  onSelectUser: (userId: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -38,12 +42,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenRecordModal,
   onOpenAllTransactions,
   settings,
+  onOpenUserModal,
+  onSelectUser,
 }) => {
   // Extract month display text e.g. "7月の家計"
   const [yearStr, monthStr] = currentMonth.split('-');
   const yearNum = parseInt(yearStr, 10);
   const monthNum = parseInt(monthStr, 10);
   const monthTitle = `${monthNum}月の家計`;
+
+  const currentUserId = settings?.currentUserId || 'all';
+  const activeUser =
+    settings?.users?.find((u) => u.id === currentUserId) ||
+    settings?.users?.[0] || {
+      id: 'default',
+      name: settings?.userName || 'ユーザー',
+      role: '家計主',
+      avatarColor: '#1c4e3f',
+    };
+
+  // Filter items by user:
+  // If specific user selected: match that user ID
+  // If 'all' (全員の家計 / 全員（世帯計）) selected: strictly only include items of currently active registered users
+  const validUserIds = new Set(settings?.users?.map((u) => u.id) || []);
+
+  const userFilteredExpenses = expenses.filter((e) => {
+    const effectiveUserId =
+      e.userId || (['exp-2', 'exp-4', 'exp-9', 'exp-12'].includes(e.id) ? 'user-2' : 'user-1');
+    if (currentUserId !== 'all') {
+      return effectiveUserId === currentUserId;
+    }
+    return validUserIds.has(effectiveUserId);
+  });
+
+  const userFilteredIncomes = incomes.filter((i) => {
+    const effectiveUserId = i.userId || 'user-1';
+    if (currentUserId !== 'all') {
+      return effectiveUserId === currentUserId;
+    }
+    return validUserIds.has(effectiveUserId);
+  });
+
 
   // Calculate previous month string (e.g. 2026-07 -> 2026-06, 2026-01 -> 2025-12)
   const prevDate = new Date(yearNum, monthNum - 2, 1);
@@ -52,16 +91,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const prevMonthStr = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
 
   // Calculate current month's totals
-  const currentMonthExpenses = expenses.filter((e) => e.date.startsWith(currentMonth));
-  const currentMonthIncomes = incomes.filter((i) => i.date.startsWith(currentMonth));
+  const currentMonthExpenses = userFilteredExpenses.filter((e) => e.date.startsWith(currentMonth));
+  const currentMonthIncomes = userFilteredIncomes.filter((i) => i.date.startsWith(currentMonth));
 
   const totalIncome = currentMonthIncomes.reduce((sum, item) => sum + item.amount, 0);
   const totalExpense = currentMonthExpenses.reduce((sum, item) => sum + item.amount, 0);
   const balance = totalIncome - totalExpense;
 
   // Calculate previous month's totals
-  const prevMonthExpenses = expenses.filter((e) => e.date.startsWith(prevMonthStr));
-  const prevMonthIncomes = incomes.filter((i) => i.date.startsWith(prevMonthStr));
+  const prevMonthExpenses = userFilteredExpenses.filter((e) => e.date.startsWith(prevMonthStr));
+  const prevMonthIncomes = userFilteredIncomes.filter((i) => i.date.startsWith(prevMonthStr));
 
   const prevTotalIncome = prevMonthIncomes.reduce((sum, item) => sum + item.amount, 0);
   const prevTotalExpense = prevMonthExpenses.reduce((sum, item) => sum + item.amount, 0);
@@ -81,8 +120,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return '先月と同額 (±¥0)';
   };
 
-  // Budget calculations
-  const monthlyBudget = settings?.monthlyBudget || 290000;
+  // Budget calculations: if single user is selected and has custom budget, use it
+  const monthlyBudget =
+    currentUserId !== 'all' && activeUser.monthlyBudget
+      ? activeUser.monthlyBudget
+      : settings?.monthlyBudget || 290000;
   const budgetRatio = monthlyBudget > 0 ? Math.round((totalExpense / monthlyBudget) * 100) : 0;
   const expenseRatio = totalIncome > 0 ? Math.round((totalExpense / totalIncome) * 100) : 0;
   // Circular ring progress (calculated from budget health)
@@ -113,6 +155,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return (b.time || '').localeCompare(a.time || '');
     })
     .slice(0, 5);
+
 
   // Icon mapping for recent expenses
   const getExpenseIconInfo = (category: string) => {
@@ -198,11 +241,89 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Plus className="w-3.5 h-3.5" />
               <span>記録する</span>
             </button>
-            <div className="w-10 h-10 rounded-full border border-[#d6e5d8] bg-white flex items-center justify-center text-[#1c4e3f] shadow-xs">
-              <User className="w-5 h-5" />
-            </div>
+            <button
+              onClick={onOpenUserModal}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#d6e5d8] bg-white hover:bg-[#edf5ee] transition-all cursor-pointer shadow-xs"
+              title="ユーザー設定・管理"
+            >
+              <div
+                className="w-7 h-7 rounded-full text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-xs"
+                style={{
+                  backgroundColor:
+                    currentUserId === 'all'
+                      ? '#1c4e3f'
+                      : activeUser.avatarColor || '#1c4e3f',
+                }}
+              >
+                {currentUserId === 'all'
+                  ? '全'
+                  : activeUser.name.slice(0, 1).toUpperCase()}
+              </div>
+              <div className="text-left hidden sm:block">
+                <div className="text-xs font-bold text-[#1b3425] leading-tight">
+                  {currentUserId === 'all' ? '家計全体' : activeUser.name}
+                </div>
+                <div className="text-[10px] text-[#60796b] leading-tight">
+                  {currentUserId === 'all' ? '全員の合算' : activeUser.role || 'ユーザー'}
+                </div>
+              </div>
+            </button>
           </div>
         </div>
+
+        {/* User Filter Pills Bar */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 -mx-1 px-1 scrollbar-none">
+          <button
+            onClick={() => onSelectUser('all')}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              currentUserId === 'all'
+                ? 'bg-[#1c4e3f] text-white shadow-xs ring-2 ring-[#1c4e3f]/20'
+                : 'bg-white border border-[#d6e4d7] text-[#42604e] hover:bg-[#edf4ee]'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>全員（世帯計）</span>
+          </button>
+
+          {settings.users?.map((u) => {
+            const isSelected = currentUserId === u.id;
+            return (
+              <button
+                key={u.id}
+                onClick={() => onSelectUser(u.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                  isSelected
+                    ? 'bg-[#1c4e3f] text-white shadow-xs ring-2 ring-[#1c4e3f]/20'
+                    : 'bg-white border border-[#d6e4d7] text-[#42604e] hover:bg-[#edf4ee]'
+                }`}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-xs"
+                  style={{ backgroundColor: u.avatarColor || '#1c4e3f' }}
+                />
+                <span>{u.name}</span>
+                {u.role && (
+                  <span
+                    className={`text-[10px] font-normal ${
+                      isSelected ? 'text-[#c6decb]' : 'text-[#728b7b]'
+                    }`}
+                  >
+                    ({u.role})
+                  </span>
+                )}
+              </button>
+            );
+          })}
+
+          <button
+            onClick={onOpenUserModal}
+            className="px-3 py-1.5 rounded-full text-xs font-bold text-[#1c4e3f] hover:bg-[#eaf4ec] border border-dashed border-[#97c4a6] flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>＋ ユーザー設定</span>
+          </button>
+        </div>
+
 
         {/* MONTHLY FLOW and Large Month Header with Arrows */}
         <div className="flex items-end justify-between pt-1">
@@ -427,6 +548,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               recentExpenses.map((item) => {
                 const iconInfo = getExpenseIconInfo(item.category);
                 const IconComponent = iconInfo.icon;
+                const itemUser = settings.users?.find((u) => u.id === item.userId);
 
                 return (
                   <div
@@ -440,8 +562,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <IconComponent className="w-4 h-4" />
                       </div>
                       <div className="min-w-0 truncate">
-                        <div className="text-sm font-bold text-[#1f372a] truncate">
-                          {item.title}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-[#1f372a] truncate">
+                            {item.title}
+                          </span>
+                          {itemUser && (
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0"
+                              style={{
+                                backgroundColor: `${itemUser.avatarColor}15`,
+                                color: itemUser.avatarColor,
+                                border: `1px solid ${itemUser.avatarColor}35`,
+                              }}
+                            >
+                              {itemUser.name}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-[#7b9182] mt-0.5">
                           {formatRecentDate(item.date, item.time)}

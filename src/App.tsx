@@ -10,7 +10,6 @@ import {
   Home,
   Wallet,
   Calendar,
-  CheckSquare,
   Plus,
 } from 'lucide-react';
 import {
@@ -22,6 +21,7 @@ import {
   WishItem,
   AppSettings,
   NavTab,
+  UserProfile,
 } from './types';
 import {
   INITIAL_EXPENSES,
@@ -31,6 +31,7 @@ import {
   INITIAL_SUBS,
   INITIAL_WISHES,
   INITIAL_SETTINGS,
+  INITIAL_USERS,
   getCurrentYearMonthString,
   getPreviousYearMonthString,
 } from './data/initialData';
@@ -40,6 +41,7 @@ import { KakeiboView } from './components/KakeiboView';
 import { TodoView } from './components/TodoView';
 import { CalendarView } from './components/CalendarView';
 import { RecordModal } from './components/RecordModal';
+import { UserManagementModal } from './components/UserManagementModal';
 
 const STORAGE_KEY = 'kakeibo_app_data_v1';
 
@@ -50,8 +52,9 @@ export default function App() {
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
 
-  // App Data States
+  // App Data States with legacy normalization & deleted user pruning
   const [expenses, setExpenses] = useState<ExpenseItem[]>(() => {
     const curYM = getCurrentYearMonthString();
     const prevYM = getPreviousYearMonthString(curYM);
@@ -59,14 +62,36 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const savedUsers = parsed.settings?.users || INITIAL_USERS;
+        const validIds = new Set(savedUsers.map((u: any) => u.id));
+
         if (Array.isArray(parsed.expenses) && parsed.expenses.length > 0) {
-          // If saved expenses don't have records for current month, append current month demo data
-          const hasCurrentMonth = parsed.expenses.some((e: ExpenseItem) => e.date.startsWith(curYM));
+          // Attribute user ID to legacy items and discard any items belonging to deleted users
+          const normalized = parsed.expenses
+            .map((e: ExpenseItem) => {
+              if (!e.userId) {
+                if (['exp-2', 'exp-4', 'exp-9', 'exp-12'].includes(e.id)) {
+                  return { ...e, userId: 'user-2' };
+                }
+                return { ...e, userId: 'user-1' };
+              }
+              return e;
+            })
+            .filter((e: ExpenseItem) => {
+              if (e.userId && !validIds.has(e.userId)) {
+                return false;
+              }
+              return true;
+            });
+
+          const hasCurrentMonth = normalized.some((e: ExpenseItem) => e.date.startsWith(curYM));
           if (!hasCurrentMonth) {
-            const currentDemoExpenses = INITIAL_EXPENSES.filter((e) => e.date.startsWith(curYM) || e.date.startsWith(prevYM));
-            return [...parsed.expenses, ...currentDemoExpenses];
+            const currentDemoExpenses = INITIAL_EXPENSES
+              .filter((e) => validIds.has(e.userId))
+              .filter((e) => e.date.startsWith(curYM) || e.date.startsWith(prevYM));
+            return [...normalized, ...currentDemoExpenses];
           }
-          return parsed.expenses;
+          return normalized;
         }
       }
     } catch (e) {
@@ -82,13 +107,32 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const savedUsers = parsed.settings?.users || INITIAL_USERS;
+        const validIds = new Set(savedUsers.map((u: any) => u.id));
+
         if (Array.isArray(parsed.incomes) && parsed.incomes.length > 0) {
-          const hasCurrentMonth = parsed.incomes.some((i: IncomeItem) => i.date.startsWith(curYM));
+          const normalized = parsed.incomes
+            .map((i: IncomeItem) => {
+              if (!i.userId) {
+                return { ...i, userId: 'user-1' };
+              }
+              return i;
+            })
+            .filter((i: IncomeItem) => {
+              if (i.userId && !validIds.has(i.userId)) {
+                return false;
+              }
+              return true;
+            });
+
+          const hasCurrentMonth = normalized.some((i: IncomeItem) => i.date.startsWith(curYM));
           if (!hasCurrentMonth) {
-            const currentDemoIncomes = INITIAL_INCOMES.filter((i) => i.date.startsWith(curYM) || i.date.startsWith(prevYM));
-            return [...parsed.incomes, ...currentDemoIncomes];
+            const currentDemoIncomes = INITIAL_INCOMES
+              .filter((i) => validIds.has(i.userId))
+              .filter((i) => i.date.startsWith(curYM) || i.date.startsWith(prevYM));
+            return [...normalized, ...currentDemoIncomes];
           }
-          return parsed.incomes;
+          return normalized;
         }
       }
     } catch (e) {
@@ -96,6 +140,7 @@ export default function App() {
     }
     return INITIAL_INCOMES;
   });
+
 
   const [todos, setTodos] = useState<TodoItem[]>(() => {
     try {
@@ -163,7 +208,15 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.settings) {
-          return { ...INITIAL_SETTINGS, ...parsed.settings };
+          const loaded: AppSettings = { ...INITIAL_SETTINGS, ...parsed.settings };
+          // Ensure users list is populated
+          if (!Array.isArray(loaded.users) || loaded.users.length === 0) {
+            loaded.users = INITIAL_SETTINGS.users;
+          }
+          if (!loaded.currentUserId) {
+            loaded.currentUserId = 'all';
+          }
+          return loaded;
         }
       }
     } catch (e) {
@@ -189,6 +242,69 @@ export default function App() {
       console.error('Failed to save to localStorage', e);
     }
   }, [expenses, incomes, todos, schedules, subscriptions, wishes, settings]);
+
+  // Auto-clean: whenever settings.users updates, immediately purge any orphaned records belonging to removed users
+  useEffect(() => {
+    const validUserIds = new Set(settings.users.map((u) => u.id));
+
+    setExpenses((prev) => {
+      const cleaned = prev.filter((item) => {
+        const effectiveUserId =
+          item.userId || (['exp-2', 'exp-4', 'exp-9', 'exp-12'].includes(item.id) ? 'user-2' : 'user-1');
+        return validUserIds.has(effectiveUserId);
+      });
+      return cleaned.length !== prev.length ? cleaned : prev;
+    });
+
+    setIncomes((prev) => {
+      const cleaned = prev.filter((item) => {
+        const effectiveUserId = item.userId || 'user-1';
+        return validUserIds.has(effectiveUserId);
+      });
+      return cleaned.length !== prev.length ? cleaned : prev;
+    });
+
+    setTodos((prev) => {
+      const cleaned = prev.filter((item) => {
+        if (item.userId && !validUserIds.has(item.userId)) {
+          return false;
+        }
+        return true;
+      });
+      return cleaned.length !== prev.length ? cleaned : prev;
+    });
+
+    setSchedules((prev) => {
+      const cleaned = prev.filter((item) => {
+        if (item.userId && !validUserIds.has(item.userId)) {
+          return false;
+        }
+        return true;
+      });
+      return cleaned.length !== prev.length ? cleaned : prev;
+    });
+
+    setSubscriptions((prev) => {
+      const cleaned = prev.filter((item) => {
+        if (item.userId && !validUserIds.has(item.userId)) {
+          return false;
+        }
+        return true;
+      });
+      return cleaned.length !== prev.length ? cleaned : prev;
+    });
+
+    setWishes((prev) => {
+      const cleaned = prev.filter((item) => {
+        if (item.userId && !validUserIds.has(item.userId)) {
+          return false;
+        }
+        return true;
+      });
+      return cleaned.length !== prev.length ? cleaned : prev;
+    });
+  }, [settings.users]);
+
 
   // Handlers for month navigation (e.g. 2026-06 <-> 2026-07 <-> 2026-08)
   const handleChangeMonth = (delta: number) => {
@@ -303,26 +419,132 @@ export default function App() {
     setSettings(INITIAL_SETTINGS);
   };
 
+  // Multi-user management handlers
+  const handleSelectUser = (userId: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      currentUserId: userId,
+      userName:
+        userId === 'all'
+          ? prev.userName
+          : prev.users.find((u) => u.id === userId)?.name || prev.userName,
+    }));
+  };
+
+  const handleAddUser = (user: Omit<UserProfile, 'id'>) => {
+    const newUser: UserProfile = {
+      ...user,
+      id: `user-${Date.now()}`,
+    };
+    setSettings((prev) => ({
+      ...prev,
+      users: [...prev.users, newUser],
+      currentUserId: newUser.id,
+      userName: newUser.name,
+    }));
+  };
+
+  const handleUpdateUser = (id: string, updates: Partial<UserProfile>) => {
+    setSettings((prev) => {
+      const updatedUsers = prev.users.map((u) =>
+        u.id === id ? { ...u, ...updates } : u
+      );
+      const activeName =
+        id === prev.currentUserId && updates.name ? updates.name : prev.userName;
+      return {
+        ...prev,
+        users: updatedUsers,
+        userName: activeName,
+      };
+    });
+  };
+
+  const handleDeleteUser = (id: string) => {
+    if (settings.users.length <= 1) return;
+    const remainingUsers = settings.users.filter((u) => u.id !== id);
+    const remainingIds = new Set(remainingUsers.map((u) => u.id));
+
+    // 1. Remove user from settings & update active user selection
+    setSettings((prev) => {
+      const remaining = prev.users.filter((u) => u.id !== id);
+      if (remaining.length === 0) return prev;
+      const newActiveId = prev.currentUserId === id ? 'all' : prev.currentUserId;
+      return {
+        ...prev,
+        users: remaining,
+        currentUserId: newActiveId,
+        userName: remaining[0]?.name || prev.userName,
+      };
+    });
+
+    // 2. Cascade delete all related expenses, incomes, todos, schedules, subs, wishes
+    setExpenses((prev) =>
+      prev.filter((item) => {
+        const effectiveUserId =
+          item.userId || (['exp-2', 'exp-4', 'exp-9', 'exp-12'].includes(item.id) ? 'user-2' : 'user-1');
+        return effectiveUserId !== id && remainingIds.has(effectiveUserId);
+      })
+    );
+
+    setIncomes((prev) =>
+      prev.filter((item) => {
+        const effectiveUserId = item.userId || 'user-1';
+        return effectiveUserId !== id && remainingIds.has(effectiveUserId);
+      })
+    );
+
+    setTodos((prev) =>
+      prev.filter((item) => {
+        if (item.userId) return item.userId !== id && remainingIds.has(item.userId);
+        return true;
+      })
+    );
+
+    setSchedules((prev) =>
+      prev.filter((item) => {
+        if (item.userId) return item.userId !== id && remainingIds.has(item.userId);
+        return true;
+      })
+    );
+
+    setSubscriptions((prev) =>
+      prev.filter((item) => {
+        if (item.userId) return item.userId !== id && remainingIds.has(item.userId);
+        return true;
+      })
+    );
+
+    setWishes((prev) =>
+      prev.filter((item) => {
+        if (item.userId) return item.userId !== id && remainingIds.has(item.userId);
+        return true;
+      })
+    );
+  };
+
+
   const uncompletedTodoCount = todos.filter((t) => !t.completed).length;
 
   return (
-    <div className="min-h-screen bg-[#f3f7f4] flex flex-col md:flex-row text-[#1f2924]">
-      {/* 1. Desktop Left Sidebar Navigation */}
-      <div className="hidden md:block">
+    <div className="h-screen w-full overflow-hidden bg-[#f3f7f4] flex flex-col md:flex-row text-[#1f2924]">
+      {/* 1. Desktop Left Sidebar Navigation - Fixed & Sticky */}
+      <div className="hidden md:block shrink-0 h-screen sticky top-0 z-30">
         <Sidebar
           currentTab={currentTab}
           onSelectTab={(tab) => setCurrentTab(tab)}
           openRecordModal={() => setIsRecordModalOpen(true)}
           todoCount={uncompletedTodoCount}
-          userName={settings.userName}
+          settings={settings}
+          onSelectUser={handleSelectUser}
+          onOpenUserModal={() => setIsUserModalOpen(true)}
           currentMonth={currentMonth}
         />
       </div>
 
-      {/* 2. Mobile Top Bar with Drawer Toggle */}
-      <div className="md:hidden bg-white border-b border-[#e1eae1] px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+      {/* 2. Mobile Top Bar with Drawer Toggle - Sticky at Top */}
+      <div className="md:hidden shrink-0 bg-white/95 backdrop-blur-md border-b border-[#e1eae1] px-4 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-[#1c4e3f] flex items-center justify-center text-white">
+          <div className="w-8 h-8 rounded-xl bg-[#1c4e3f] flex items-center justify-center text-white shadow-xs">
             <Home className="w-4 h-4" />
           </div>
           <div>
@@ -336,7 +558,7 @@ export default function App() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsRecordModalOpen(true)}
-            className="p-2 rounded-xl bg-[#1c4e3f] text-white shadow-xs cursor-pointer"
+            className="p-2 rounded-xl bg-[#1c4e3f] text-white shadow-xs cursor-pointer active:scale-95 transition-transform"
             title="記録する"
           >
             <Plus className="w-4 h-4" />
@@ -352,8 +574,8 @@ export default function App() {
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex">
-          <div className="w-64 bg-white h-full flex flex-col justify-between p-4 shadow-2xl">
+        <div className="md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex animate-in fade-in duration-200">
+          <div className="w-64 bg-white h-full flex flex-col justify-between shadow-2xl">
             <Sidebar
               currentTab={currentTab}
               onSelectTab={(tab) => {
@@ -365,7 +587,15 @@ export default function App() {
                 setMobileMenuOpen(false);
               }}
               todoCount={uncompletedTodoCount}
-              userName={settings.userName}
+              settings={settings}
+              onSelectUser={(userId) => {
+                handleSelectUser(userId);
+                setMobileMenuOpen(false);
+              }}
+              onOpenUserModal={() => {
+                setIsUserModalOpen(true);
+                setMobileMenuOpen(false);
+              }}
               currentMonth={currentMonth}
             />
           </div>
@@ -373,8 +603,8 @@ export default function App() {
         </div>
       )}
 
-      {/* 3. Main Content View Area */}
-      <main className="flex-1 min-w-0 pb-20 md:pb-8 overflow-y-auto">
+      {/* 3. Main Content View Area - Scrollable Independently */}
+      <main className="flex-1 min-w-0 h-full pb-24 md:pb-8 overflow-y-auto">
         {currentTab === 'dashboard' && (
           <DashboardView
             incomes={incomes}
@@ -385,6 +615,8 @@ export default function App() {
             onOpenRecordModal={() => setIsRecordModalOpen(true)}
             onOpenAllTransactions={() => setCurrentTab('kakeibo')}
             settings={settings}
+            onOpenUserModal={() => setIsUserModalOpen(true)}
+            onSelectUser={handleSelectUser}
           />
         )}
 
@@ -408,6 +640,8 @@ export default function App() {
             }
             onResetData={handleResetData}
             onLoadSampleData={handleLoadSampleData}
+            onOpenUserModal={() => setIsUserModalOpen(true)}
+            onSelectUser={handleSelectUser}
           />
         )}
 
@@ -430,7 +664,7 @@ export default function App() {
         )}
       </main>
 
-      {/* 4. Bottom Tab Navigation Bar (Visible on mobile screens, matches the bottom navigation bar in the reference image) */}
+      {/* 4. Bottom Tab Navigation Bar (Visible on mobile screens, pinned persistently) */}
       <div className="md:hidden fixed bottom-3 left-1/2 -translate-x-1/2 z-40 bg-white/95 backdrop-blur-md px-6 py-2.5 rounded-full border border-[#d6e5d8] shadow-lg shadow-[#1c4e3f]/10 flex items-center gap-7">
         <button
           onClick={() => setCurrentTab('dashboard')}
@@ -475,6 +709,20 @@ export default function App() {
         onClose={() => setIsRecordModalOpen(false)}
         onAddExpense={handleAddExpense}
         onAddIncome={handleAddIncome}
+        users={settings.users}
+        defaultUserId={settings.currentUserId}
+      />
+
+      {/* 6. User Management Modal */}
+      <UserManagementModal
+        isOpen={isUserModalOpen}
+        onClose={() => setIsUserModalOpen(false)}
+        users={settings.users}
+        currentUserId={settings.currentUserId}
+        onSelectUser={handleSelectUser}
+        onAddUser={handleAddUser}
+        onUpdateUser={handleUpdateUser}
+        onDeleteUser={handleDeleteUser}
       />
     </div>
   );

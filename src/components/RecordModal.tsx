@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { X, TrendingDown, TrendingUp } from 'lucide-react';
-import { ExpenseCategory, ExpenseItem, IncomeItem } from '../types';
+import React, { useState, useEffect } from 'react';
+import { X, TrendingDown, TrendingUp, User } from 'lucide-react';
+import { ExpenseCategory, ExpenseItem, IncomeItem, UserProfile } from '../types';
 
 interface RecordModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddExpense: (expense: Omit<ExpenseItem, 'id'>) => void;
   onAddIncome: (income: Omit<IncomeItem, 'id'>) => void;
+  users?: UserProfile[];
+  defaultUserId?: string;
 }
 
 const CATEGORIES: ExpenseCategory[] = [
@@ -28,6 +30,8 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   onClose,
   onAddExpense,
   onAddIncome,
+  users = [],
+  defaultUserId,
 }) => {
   const [type, setType] = useState<'expense' | 'income'>('expense');
 
@@ -36,6 +40,17 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   const [category, setCategory] = useState<ExpenseCategory>('食費');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+
+  useEffect(() => {
+    if (defaultUserId && defaultUserId !== 'all') {
+      setSelectedUserId(defaultUserId);
+    } else if (users.length > 0) {
+      setSelectedUserId(users[0].id);
+    } else {
+      setSelectedUserId('');
+    }
+  }, [defaultUserId, users, isOpen]);
 
   if (!isOpen) return null;
 
@@ -55,12 +70,14 @@ export const RecordModal: React.FC<RecordModalProps> = ({
           minute: '2-digit',
           hour12: false,
         }),
+        userId: selectedUserId || users[0]?.id || 'user-1',
       });
     } else {
       onAddIncome({
         source: title.trim(),
         amount: val,
         date,
+        userId: selectedUserId || users[0]?.id || 'user-1',
       });
     }
 
@@ -71,7 +88,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md rounded-3xl p-6 sm:p-7 shadow-2xl border border-[#dce8dd] relative space-y-5">
+      <div className="bg-white w-full max-w-md rounded-3xl p-6 sm:p-7 shadow-2xl border border-[#dce8dd] relative space-y-4">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -120,6 +137,38 @@ export const RecordModal: React.FC<RecordModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3.5">
+          {/* User attribution selector */}
+          {users.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-[#486353] mb-1">
+                記録者 / 担当ユーザー
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {users.map((u) => {
+                  const isChosen = selectedUserId === u.id;
+                  return (
+                    <button
+                      type="button"
+                      key={u.id}
+                      onClick={() => setSelectedUserId(u.id)}
+                      className={`flex items-center gap-1.5 p-2 rounded-xl text-left border text-xs transition-all cursor-pointer ${
+                        isChosen
+                          ? 'bg-[#edf5ee] border-[#1c4e3f] font-bold text-[#163829]'
+                          : 'bg-[#fcfdfc] border-[#dfe7e0] text-[#556d5e] hover:bg-[#f3f7f4]'
+                      }`}
+                    >
+                      <div
+                        className="w-3.5 h-3.5 rounded-full shrink-0"
+                        style={{ backgroundColor: u.avatarColor || '#1c4e3f' }}
+                      />
+                      <span className="truncate">{u.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-[#486353] mb-1">
               {type === 'expense' ? '品名 / 用途' : '収入の種類 / 送金元'}

@@ -1,4 +1,4 @@
-import { ExpenseItem, IncomeItem, TodoItem, ScheduleItem, SubscriptionItem, WishItem, AppSettings } from '../types';
+import { ExpenseItem, IncomeItem, TodoItem, ScheduleItem, SubscriptionItem, WishItem, AppSettings, UserProfile } from '../types';
 
 export const getCurrentYearMonthString = (): string => {
   const now = new Date();
@@ -18,6 +18,25 @@ export const getPreviousYearMonthString = (yearMonthStr: string): string => {
 const CURRENT_YM = getCurrentYearMonthString();
 const PREV_YM = getPreviousYearMonthString(CURRENT_YM);
 
+export const INITIAL_USERS: UserProfile[] = [
+  {
+    id: 'user-1',
+    name: '田中 太郎',
+    role: '家計主 / 管理者',
+    avatarColor: '#1c4e3f', // Forest green
+    monthlyBudget: 190000,
+    memo: '固定費・食費メイン担当',
+  },
+  {
+    id: 'user-2',
+    name: '田中 花子',
+    role: 'パートナー',
+    avatarColor: '#2563eb', // Indigo Blue
+    monthlyBudget: 100000,
+    memo: '日用品・カフェ・雑貨担当',
+  },
+];
+
 export const INITIAL_INCOMES: IncomeItem[] = [
   {
     id: 'inc-1',
@@ -25,6 +44,7 @@ export const INITIAL_INCOMES: IncomeItem[] = [
     amount: 328000,
     date: `${CURRENT_YM}-10`,
     memo: '給与振込',
+    userId: 'user-1',
   },
   {
     id: 'inc-june-1',
@@ -32,8 +52,10 @@ export const INITIAL_INCOMES: IncomeItem[] = [
     amount: 280000,
     date: `${PREV_YM}-10`,
     memo: '前月給与振込',
+    userId: 'user-1',
   },
 ];
+
 
 export const INITIAL_EXPENSES: ExpenseItem[] = [
   // Exact recent items adapted to current month:
@@ -45,6 +67,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-12`,
     time: '14:32',
     memo: '夕食・まとめ買い',
+    userId: 'user-1',
   },
   {
     id: 'exp-2',
@@ -54,6 +77,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-11`,
     time: '10:16',
     memo: 'アイスラテ・休憩',
+    userId: 'user-2',
   },
   {
     id: 'exp-3',
@@ -63,6 +87,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-10`,
     time: '08:45',
     memo: '定期外移動',
+    userId: 'user-1',
   },
   {
     id: 'exp-4',
@@ -72,6 +97,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-09`,
     time: '19:12',
     memo: 'シャンプー・洗剤・サプリ',
+    userId: 'user-2',
   },
   {
     id: 'exp-5',
@@ -81,6 +107,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-08`,
     time: '12:03',
     memo: '電気料金利用分',
+    userId: 'user-1',
   },
   {
     id: 'exp-6',
@@ -90,6 +117,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-05`,
     time: '16:00',
     memo: '月初生鮮食品・調味料まとめ買い',
+    userId: 'user-1',
   },
   // 住まい total = 40,000
   {
@@ -100,6 +128,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-01`,
     time: '09:00',
     memo: '今月分家賃振替',
+    userId: 'user-1',
   },
   // 交通 total = 22,480 (1,240 + 21,240)
   {
@@ -110,6 +139,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-04`,
     time: '11:20',
     memo: '新幹線チケット',
+    userId: 'user-1',
   },
   // Other supporting categories so total expense matches ¥188,680:
   // (68,320 + 40,000 + 22,480 = 130,800. Remaining: 57,880)
@@ -122,6 +152,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-03`,
     time: '15:10',
     memo: '消耗品・清掃用品',
+    userId: 'user-2',
   },
   // 光熱費 already has 6,420 -> add 9,980 (ガス・水道) = 16,400
   {
@@ -132,6 +163,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-02`,
     time: '10:00',
     memo: '水道光熱費振替',
+    userId: 'user-1',
   },
   // 通信費: 8,800
   {
@@ -142,6 +174,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-01`,
     time: '12:00',
     memo: '今月通信費',
+    userId: 'user-1',
   },
   // 趣味・娯楽: 14,080
   {
@@ -152,6 +185,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${CURRENT_YM}-07`,
     time: '20:30',
     memo: '文芸書・配信サービス',
+    userId: 'user-2',
   },
   // 先月の実績データ (先月比計算の基準データ: 支出計 148,680円, 収支差額 131,320円)
   {
@@ -162,6 +196,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${PREV_YM}-01`,
     time: '09:00',
     memo: '前月分家賃振替',
+    userId: 'user-1',
   },
   {
     id: 'exp-june-2',
@@ -171,6 +206,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${PREV_YM}-05`,
     time: '15:30',
     memo: '前月食費まとめ買い',
+    userId: 'user-1',
   },
   {
     id: 'exp-june-3',
@@ -180,6 +216,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${PREV_YM}-12`,
     time: '11:00',
     memo: '前月水道・電気代',
+    userId: 'user-1',
   },
   {
     id: 'exp-june-4',
@@ -189,6 +226,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${PREV_YM}-16`,
     time: '18:20',
     memo: '生活消耗品',
+    userId: 'user-1',
   },
   {
     id: 'exp-june-5',
@@ -198,6 +236,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${PREV_YM}-08`,
     time: '08:30',
     memo: '交通費定期外',
+    userId: 'user-1',
   },
   {
     id: 'exp-june-6',
@@ -207,6 +246,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${PREV_YM}-01`,
     time: '12:00',
     memo: '前月通信費',
+    userId: 'user-1',
   },
   {
     id: 'exp-june-7',
@@ -216,6 +256,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     date: `${PREV_YM}-20`,
     time: '14:00',
     memo: '週末カフェランチ',
+    userId: 'user-1',
   },
 ];
 
@@ -272,9 +313,12 @@ export const INITIAL_WISHES: WishItem[] = [
 ];
 
 export const INITIAL_SETTINGS: AppSettings = {
-  familySize: '1',
+  familySize: '2',
   hasPet: false,
   targetSavings: 50000,
   monthlyBudget: 290000,
-  userName: 'USER',
+  userName: '田中 太郎',
+  currentUserId: 'all',
+  users: INITIAL_USERS,
 };
+

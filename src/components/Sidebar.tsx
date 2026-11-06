@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Home,
   Wallet,
@@ -6,16 +6,21 @@ import {
   Calendar,
   PlusCircle,
   Sparkles,
-  TrendingUp,
+  ChevronDown,
+  Users,
+  Settings,
+  Check,
 } from 'lucide-react';
-import { NavTab } from '../types';
+import { NavTab, AppSettings } from '../types';
 
 interface SidebarProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   openRecordModal: () => void;
   todoCount: number;
-  userName: string;
+  settings: AppSettings;
+  onSelectUser: (userId: string) => void;
+  onOpenUserModal: () => void;
   currentMonth: string;
 }
 
@@ -24,10 +29,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   openRecordModal,
   todoCount,
-  userName,
+  settings,
+  onSelectUser,
+  onOpenUserModal,
   currentMonth,
 }) => {
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const monthNum = parseInt(currentMonth.split('-')[1], 10);
+
+  const activeUser =
+    settings.users.find((u) => u.id === settings.currentUserId) ||
+    settings.users[0] || {
+      id: 'default',
+      name: settings.userName || 'ユーザー',
+      role: '家計主',
+      avatarColor: '#1c4e3f',
+    };
 
   const navItems = [
     {
@@ -58,9 +75,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-64 shrink-0 bg-[#ffffff] border-r border-[#e3ebe2] flex flex-col min-h-screen select-none">
+    <aside className="w-64 shrink-0 bg-[#ffffff] border-r border-[#e3ebe2] flex flex-col h-full select-none relative">
       {/* Brand Header */}
-      <div className="p-6 pb-5 border-b border-[#edf3ec]">
+      <div className="p-6 pb-5 border-b border-[#edf3ec] shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#1c4e3f] flex items-center justify-center text-white shadow-sm shadow-[#1c4e3f]/20">
             <Home className="w-5 h-5" />
@@ -77,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Quick Action Button */}
-      <div className="px-4 pt-4">
+      <div className="px-4 pt-4 shrink-0">
         <button
           onClick={openRecordModal}
           className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#1c4e3f] hover:bg-[#163e32] text-white font-semibold text-sm transition-all shadow-sm shadow-[#1c4e3f]/20 active:scale-[0.98] cursor-pointer"
@@ -87,8 +104,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* Main Navigation Links */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      {/* Main Navigation Links (scrolls internally if needed) */}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-[#7e9185] uppercase">
           メインメニュー
         </div>
@@ -135,8 +152,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Health status summary card in sidebar */}
-      <div className="p-4 mx-3 mb-4 rounded-xl bg-[#f4f8f4] border border-[#e2ede4]">
+      {/* Health status summary card */}
+      <div className="p-4 mx-3 mb-3 rounded-xl bg-[#f4f8f4] border border-[#e2ede4] shrink-0">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-[#1c4e3f] mb-1">
           <Sparkles className="w-3.5 h-3.5 text-[#2a7b60]" />
           <span>今月のコンディション</span>
@@ -150,29 +167,143 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* User Footer Profile */}
-      <div className="p-4 border-t border-[#edf3ec] bg-[#ffffff]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-full bg-[#edf4ee] border border-[#d6e5d8] flex items-center justify-center text-[#1c4e3f] font-bold text-sm">
-              {userName.slice(0, 1).toUpperCase()}
+      {/* User Footer Profile & Quick Switcher Dropdown */}
+      <div className="p-3 border-t border-[#edf3ec] bg-[#ffffff] shrink-0 relative">
+        {/* User quick menu popover */}
+        {showUserDropdown && (
+          <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-2xl shadow-xl border border-[#dbe6dc] p-2 space-y-1.5 z-50 animate-in fade-in slide-in-from-bottom-2">
+            <div className="px-2 py-1 text-[11px] font-bold text-[#627f6e] flex items-center justify-between">
+              <span>ユーザー切替</span>
+              <button
+                onClick={() => {
+                  setShowUserDropdown(false);
+                  onOpenUserModal();
+                }}
+                className="text-[#1c4e3f] hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
+              >
+                <Settings className="w-3 h-3" />
+                <span>管理</span>
+              </button>
             </div>
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-[#1c2e23] truncate">
-                {userName}
+
+            {/* All users option */}
+            <button
+              onClick={() => {
+                onSelectUser('all');
+                setShowUserDropdown(false);
+              }}
+              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left text-xs transition-colors cursor-pointer ${
+                settings.currentUserId === 'all'
+                  ? 'bg-[#eaf4ec] text-[#1c4e3f] font-bold'
+                  : 'hover:bg-[#f5f8f5] text-[#334d3e]'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-[#2d5f4f] text-white text-[10px] flex items-center justify-center font-bold">
+                  全
+                </div>
+                <span>家計全体（全員）</span>
               </div>
-              <div className="text-[10px] text-[#2a7b60] flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#2a7b60] inline-block" />
-                オンライン
-              </div>
+              {settings.currentUserId === 'all' && (
+                <Check className="w-3.5 h-3.5 text-[#1c4e3f]" />
+              )}
+            </button>
+
+            {/* Individual users */}
+            {settings.users.map((u) => {
+              const isSelected = settings.currentUserId === u.id;
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => {
+                    onSelectUser(u.id);
+                    setShowUserDropdown(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left text-xs transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#eaf4ec] text-[#1c4e3f] font-bold'
+                      : 'hover:bg-[#f5f8f5] text-[#334d3e]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-6 h-6 rounded-lg text-white text-[10px] flex items-center justify-center font-bold shrink-0"
+                      style={{ backgroundColor: u.avatarColor || '#1c4e3f' }}
+                    >
+                      {u.name.slice(0, 1)}
+                    </div>
+                    <div className="truncate">
+                      <div className="truncate">{u.name}</div>
+                      {u.role && (
+                        <div className="text-[10px] text-[#71887a]">{u.role}</div>
+                      )}
+                    </div>
+                  </div>
+                  {isSelected && (
+                    <Check className="w-3.5 h-3.5 text-[#1c4e3f] shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+
+            <div className="pt-1 border-t border-[#edf4ee]">
+              <button
+                onClick={() => {
+                  setShowUserDropdown(false);
+                  onOpenUserModal();
+                }}
+                className="w-full py-1.5 px-2 text-center text-xs font-semibold text-[#1c4e3f] hover:bg-[#edf5ee] rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>ユーザー・名前の追加設定</span>
+              </button>
             </div>
           </div>
+        )}
+
+        {/* User Card Bar */}
+        <div className="flex items-center justify-between p-1 rounded-xl hover:bg-[#f5f8f5] transition-colors">
           <button
-            onClick={() => onSelectTab('kakeibo')}
-            title="家計簿を開く"
-            className="p-1.5 rounded-lg text-[#6d8475] hover:text-[#1c4e3f] hover:bg-[#edf4ee] transition-colors cursor-pointer"
+            onClick={() => setShowUserDropdown(!showUserDropdown)}
+            className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+            title="ユーザーを切替または設定"
           >
-            <TrendingUp className="w-4 h-4" />
+            <div
+              className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs"
+              style={{
+                backgroundColor:
+                  settings.currentUserId === 'all'
+                    ? '#1c4e3f'
+                    : activeUser.avatarColor || '#1c4e3f',
+              }}
+            >
+              {settings.currentUserId === 'all'
+                ? '全'
+                : activeUser.name.slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-bold text-[#1c2e23] truncate flex items-center gap-1">
+                <span className="truncate">
+                  {settings.currentUserId === 'all'
+                    ? '家計全体'
+                    : activeUser.name}
+                </span>
+                <ChevronDown className="w-3 h-3 text-[#799081] shrink-0" />
+              </div>
+              <div className="text-[10px] text-[#52705e] truncate">
+                {settings.currentUserId === 'all'
+                  ? `${settings.users.length}名の合算`
+                  : activeUser.role || 'メンバー'}
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={onOpenUserModal}
+            title="ユーザー設定を開く"
+            className="p-1.5 rounded-lg text-[#6d8475] hover:text-[#1c4e3f] hover:bg-[#edf4ee] transition-colors cursor-pointer shrink-0"
+          >
+            <Settings className="w-4 h-4" />
           </button>
         </div>
       </div>
